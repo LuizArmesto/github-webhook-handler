@@ -89,4 +89,4 @@ If you want to use this with a tunneling service, ngrok_ for example,
 you will need to set a GHE_ADDRESS for 127.0.0.1 to allow the tunnel
 to post.
 
-.. _ngrok:: http://ngrok.com
+.. _ngrok: http://ngrok.com
