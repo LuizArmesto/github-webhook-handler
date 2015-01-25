@@ -42,6 +42,9 @@ def index():
         # Store the IP address of the requester
         request_ip = ipaddress.ip_address(u'{0}'.format(request.remote_addr))
 
+        if app.debug:
+            print("Got a request from {}".format(request_ip))
+
         # If GHE_ADDRESS is specified, use it as the hook_blocks.
         if os.environ.get('GHE_ADDRESS', None):
             hook_blocks = [os.environ.get('GHE_ADDRESS')]
@@ -49,22 +52,40 @@ def index():
         else:
             hook_blocks = requests.get('https://api.github.com/meta').json()[
                 'hooks']
+            print(hook_blocks)
 
         # Check if the POST request is from github.com or GHE
         for block in hook_blocks:
             if ipaddress.ip_address(request_ip) in ipaddress.ip_network(block):
                 break  # the remote_addr is within the network range of github.
         else:
+            if app.debug:
+                print("Aborting with a 403")
             abort(403)
+
+        if app.debug:
+            print("Got a {} event.".format(request.headers.get('X-GitHub-Event')))
 
         if request.headers.get('X-GitHub-Event') == "ping":
             return json.dumps({'msg': 'Hi!'})
         if request.headers.get('X-GitHub-Event') != "push":
             return json.dumps({'msg': "wrong event type"})
 
-        repos = json.loads(io.open(REPOS_JSON_PATH, 'r').read())
+        try:
+            repos = json.loads(io.open(REPOS_JSON_PATH, 'r').read())
+            if app.debug:
+                print("Successfully loaded {}".format(REPOS_JSON_PATH))
+        except:
+            ex_type, ex_value = sys.exc_info()[:2]
+            print("Error reading {}:{},{}".format(REPOS_JSON_PATH,ex_type,ex_value))
 
-        payload = json.loads(request.data)
+        try:
+            payload = json.loads(request.data.decode())
+            if app.debug:
+                print("Successfully grokked the payload")
+        except:
+            ex_type, ex_value = sys.exc_info()[:2]
+            print("Error grokking the payload: {},{}".format(ex_type,ex_value))
         repo_meta = {
             'name': payload['repository']['name'],
             'owner': payload['repository']['owner']['name'],
@@ -80,18 +101,28 @@ def index():
             # Fallback to plain owner/name lookup
             if not repo:
                 repo = repos.get('{owner}/{name}'.format(**repo_meta), None)
+        else:
+            if app.debug:
+                print("No match.")
 
         if repo and repo.get('path', None):
             # Check if POST request signature is valid
             key = repo.get('key', None)
             if key:
+                if app.debug:
+                    print("Verifying the key")
                 signature = request.headers.get('X-Hub-Signature').split(
                     '=')[1]
                 if type(key) == unicode:
                     key = key.encode()
                 mac = hmac.new(key, msg=request.data, digestmod=sha1)
                 if not compare_digest(mac.hexdigest(), signature):
+                    if app.debug:
+                        print("Failed sig check!")
                     abort(403)
+            else:
+                if app.debug:
+                    print("No key configured for {}".format(repo))
 
             if repo.get('action', None):
                 for action in repo['action']:
