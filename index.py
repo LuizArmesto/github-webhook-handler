@@ -26,8 +26,24 @@ module.
 if os.environ.get('USE_PROXYFIX', None) == 'true':
     from werkzeug.contrib.fixers import ProxyFix
 
+class flushfile(object):
+  def __init__(self, f):
+    self.f = f
+
+  def write(self, x):
+    self.f.write(x)
+    self.f.flush()
+
+import sys
+sys.stdout = flushfile(sys.stdout)
+
 app = Flask(__name__)
 app.debug = os.environ.get('DEBUG') == 'true'
+# print (os.environ.get('DEBUG'))
+if app.debug:
+    print("Debug output enabled")
+else:
+    print("Debug output disabled")
 
 # The repos.json file should be readable by the user running the Flask app,
 # and the absolute path should be given by this environment variable.
@@ -78,6 +94,10 @@ def index():
         except:
             ex_type, ex_value = sys.exc_info()[:2]
             print("Error reading {}:{},{}".format(REPOS_JSON_PATH,ex_type,ex_value))
+            abort(403)
+
+        if app.debug:
+            print(repos)
 
         try:
             payload = json.loads(request.data.decode())
@@ -86,6 +106,8 @@ def index():
         except:
             ex_type, ex_value = sys.exc_info()[:2]
             print("Error grokking the payload: {},{}".format(ex_type,ex_value))
+            abort(403)
+
         repo_meta = {
             'name': payload['repository']['name'],
             'owner': payload['repository']['owner']['name'],
@@ -97,15 +119,18 @@ def index():
             repo_meta['branch'] = match.groupdict()['branch']
             repo = repos.get(
                 '{owner}/{name}/branch:{branch}'.format(**repo_meta), None)
-
-            # Fallback to plain owner/name lookup
-            if not repo:
-                repo = repos.get('{owner}/{name}'.format(**repo_meta), None)
         else:
             if app.debug:
                 print("No match.")
 
-        if repo and repo.get('path', None):
+        # Fallback to plain owner/name lookup
+        if not repo:
+            repo = repos.get('{owner}/{name}'.format(**repo_meta), None)
+
+        if app.debug:
+            print("Repo:  {} ".format(repo))
+
+        if repo:
             # Check if POST request signature is valid
             key = repo.get('key', None)
             if key:
@@ -113,7 +138,7 @@ def index():
                     print("Verifying the key")
                 signature = request.headers.get('X-Hub-Signature').split(
                     '=')[1]
-                if type(key) == unicode:
+                if type(key) == str:
                     key = key.encode()
                 mac = hmac.new(key, msg=request.data, digestmod=sha1)
                 if not compare_digest(mac.hexdigest(), signature):
@@ -126,8 +151,13 @@ def index():
 
             if repo.get('action', None):
                 for action in repo['action']:
-                    subp = subprocess.Popen(action, cwd=repo['path'])
+                    subp = subprocess.Popen(action, cwd=repo.get('path', None))
                     subp.wait()
+        else:
+            if app.debug:
+                print("Aborting with a 403 because no repo found")
+            abort(403)
+
         return 'OK'
 
 # Check if python version is less than 2.7.7
