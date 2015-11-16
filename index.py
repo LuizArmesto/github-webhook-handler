@@ -79,14 +79,6 @@ def index():
                 print("Aborting with a 403")
             abort(403)
 
-        if app.debug:
-            print("Got a {} event.".format(request.headers.get('X-GitHub-Event')))
-
-        if request.headers.get('X-GitHub-Event') == "ping":
-            return json.dumps({'msg': 'Hi!'})
-        if request.headers.get('X-GitHub-Event') != "push":
-            return json.dumps({'msg': "wrong event type"})
-
         try:
             repos = json.loads(io.open(REPOS_JSON_PATH, 'r').read())
             if app.debug:
@@ -97,7 +89,7 @@ def index():
             abort(403)
 
         if app.debug:
-            print(repos)
+            print("repos: {}".format(repos))
 
         try:
             payload = json.loads(request.data.decode())
@@ -109,54 +101,88 @@ def index():
             abort(403)
 
         repo_meta = {
-            'name': payload['repository']['name'],
-            'owner': payload['repository']['owner']['name'],
+            'full_name': payload['repository']['full_name'],
+            'clone_url': payload['repository'].get('clone_url', None),
         }
 
-        # Try to match on branch as configured in repos.json
-        match = re.match(r"refs/heads/(?P<branch>.*)", payload['ref'])
-        if match:
-            repo_meta['branch'] = match.groupdict()['branch']
-            repo = repos.get(
-                '{owner}/{name}/branch:{branch}'.format(**repo_meta), None)
+        pull_request =  payload.get('pull_request', None)
+        if pull_request:
+            repo_meta['issue_number'] = pull_request['number']
+            repo_meta['request_sha'] = pull_request['head']['sha']
         else:
+            repo_meta['issue_number'] = ""
+            repo_meta['request_sha'] = ""
+
+        if app.debug:
+            print("repo_meta:  {} ".format(repo_meta))
+
+
+        event = request.headers.get('X-GitHub-Event')
+        if app.debug:
+            print("Got a {} event.".format(event))
+
+        if event == "ping":
+            return json.dumps({'msg': 'Hi!'})
+
+        repo = repos.get('{}::{}'.format(repo_meta['full_name'], event), None)
+        if not repo:
             if app.debug:
-                print("No match.")
+                print("Can not find a repo for event type.")
+            abort(403)
+
+
+        # Try to match on branch as configured in repos.json
+#        match = re.match(r"refs/heads/(?P<branch>.*)", payload['ref'])
+#        if match:
+#            repo_meta['branch'] = match.groupdict()['branch']
+#            repo = repos.get(
+#                '{full_name}/branch:{branch}'.format(**repo_meta), None)
+#        else:
+#            if app.debug:
+#                print("No match.")
 
         # Fallback to plain owner/name lookup
-        if not repo:
-            repo = repos.get('{owner}/{name}'.format(**repo_meta), None)
+#        if not repo:
+#        repo = repos.get('{full_name}'.format(**repo_meta), None)
 
         if app.debug:
             print("Repo:  {} ".format(repo))
 
-        if repo:
-            # Check if POST request signature is valid
-            key = repo.get('key', None)
-            if key:
-                if app.debug:
-                    print("Verifying the key")
-                signature = request.headers.get('X-Hub-Signature').split(
-                    '=')[1]
-                if type(key) == str:
-                    key = key.encode()
-                mac = hmac.new(key, msg=request.data, digestmod=sha1)
-                if not compare_digest(mac.hexdigest(), signature):
-                    if app.debug:
-                        print("Failed sig check!")
-                    abort(403)
-            else:
-                if app.debug:
-                    print("No key configured for {}".format(repo))
-
-            if repo.get('action', None):
-                for action in repo['action']:
-                    subp = subprocess.Popen(action, cwd=repo.get('path', None))
-                    subp.wait()
-        else:
+        if not repo:
             if app.debug:
                 print("Aborting with a 403 because no repo found")
             abort(403)
+
+        # Check if POST request signature is valid
+        key = repo.get('key', None)
+        if key:
+            if app.debug:
+                print("Verifying the key")
+            signature = request.headers.get('X-Hub-Signature').split(
+                '=')[1]
+            if type(key) == str:
+                key = key.encode()
+            mac = hmac.new(key, msg=request.data, digestmod=sha1)
+            if not compare_digest(mac.hexdigest(), signature):
+                if app.debug:
+                    print("Failed sig check!")
+                abort(403)
+        else:
+            if app.debug:
+                print("No key configured for {}".format(repo))
+
+        if repo.get('action', None):
+            for action in repo['action']:
+                formatedAction = []
+                for arg in action:
+                    formatedAction.append(arg.format(**repo_meta))
+
+                if app.debug:
+                    print("action to run: {}".format(formatedAction))
+
+                subp = subprocess.Popen(formatedAction, cwd=repo.get('path', None))
+                subp.wait()
+
 
         return 'OK'
 
