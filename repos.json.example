@@ -1,5 +1,16 @@
 {
-    "razius/puppet": {
-        "path": "/home/puppet"
+    "aAXEe/test-web::push": {
+        "key": "secret_42",
+        "action": [
+          ["echo", "push"],
+          ["echo", "full name: {full_name}"]
+        ]
+    },
+    "aAXEe/test-web::pull_request": {
+        "key": "secret_42",
+        "action": [
+          ["echo", "pull_request number {issue_number}"]
+        ],
+        "bot_comment": "Hello world from a bot.<br>I can expand vars: {request_sha} #{issue_number}"
     }
 }
