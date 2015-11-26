@@ -31,7 +31,7 @@ registered under the form ``GITHUB_USER/REPOSITORY_NAME``.
         "razius/puppet": {
             "path": "/home/puppet",
             "key": "MyVerySecretKey",
-            "action": [["git", "pull", "origin", "master"], ],
+            "action": [["git", "pull", "origin", "master"] ],
         },
         "d3non/somerandomexample/branch:live": {
 	    "path": "/home/exampleapp",
@@ -45,7 +45,7 @@ Runtime Configuration
 =====================
 
 Runtime operation is influenced by a set of environment variables which require
-being set to influence operation.  Only REPOS_JSON_PATH is required to be set,
+being set to influence operation.  Only FLASK_GITHUB_WEBHOOK_REPOS_JSON is required to be set,
 as this is required to know how to act on actions from repositories.  The
 remaining variables are optional.  USE_PROXYFIX needs to be set to true if
 being used behind a WSGI proxy, and is not required otherwise.  GHE_ADDRESS
@@ -56,7 +56,7 @@ Set environment variable for the ``repos.json`` config.
 
 .. code-block:: console
 
-    export REPOS_JSON_PATH=/path/to/repos.json
+    export FLASK_GITHUB_WEBHOOK_REPOS_JSON=/path/to/repos.json
 
 Start the server.
 
@@ -81,3 +81,12 @@ Start the server to be used with a GitHub Enterprise instance.
 Go to your repository's settings on `github.com <http://github.com>`_ or your
 GitHub Enterprise instance and register your public URL under
 ``Service Hooks -> WebHook URLs``.
+
+Tips & Tricks
+~~~~~~~~~~~~~~
+
+If you want to use this with a tunneling service, ngrok_ for example,
+you will need to set a GHE_ADDRESS for 127.0.0.1 to allow the tunnel
+to post.
+
+.. _ngrok: http://ngrok.com
