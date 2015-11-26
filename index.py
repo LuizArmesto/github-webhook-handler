@@ -137,8 +137,20 @@ def index():
 
         if event == "ping":
             return json.dumps({'msg': 'Hi!'})
+            
+        # Try to match on branch as configured in repos.json
+        ref = payload.get('ref', '')
+        match = re.match(r"refs/heads/(?P<branch>.*)", ref)
+        if match:
+            repo_meta['branch'] = match.groupdict()['branch']
+        else:
+            if app.debug:
+                print("No match.")
 
-        repo = repos.get('{}::{}'.format(repo_meta['full_name'], event), None)
+        if 'branch' in repo_meta:
+            repo = repos.get('{}/branch:{}::{}'.format(repo_meta['full_name'], repo_meta['branch'], event), None)
+        else:
+            repo = repos.get('{}::{}'.format(repo_meta['full_name'], event), None)
         if not repo:
             if app.debug:
                 print("Can not find a repo for event type.")
